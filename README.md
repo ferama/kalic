@@ -10,7 +10,8 @@ Bring up with:
 docker-compose up -d
 ```
 
-Wait some time (half an hour? less?) to let the chroot environment build
+Wait some time (half an hour? less?) to let the chroot environment build.
+
 Look at the logs with
 
 ```
@@ -18,7 +19,7 @@ docker-compose logs -f
 ```
 Access the the kali container using:
 
-* ssh on `SSHD_LISTEN_ADDRESS`
+* ssh on `SSHD_LISTEN_ADDRESS` (using my own sshd service -> https://github.com/ferama/rospo)
 * vnc on `VNCPORT`
 * with browser on http://host:NOVNCPORT/vnc.html
 
