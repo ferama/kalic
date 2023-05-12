@@ -2,7 +2,7 @@
 
 A docker based, persistent (through chroot) kali environment.
 
-Edit the envirnment on docker-compose.yml.
+Edit the envirnment in docker-compose.yml.
 
 Bring up with:
 
