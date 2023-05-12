@@ -1,0 +1,91 @@
+version: "3.8"
+
+volumes:
+  chroot:
+
+services:
+  kali:
+    image: kalilinux/kali-rolling
+    privileged: true
+    network_mode: "host"
+
+    ports:
+      - "2222:2222"
+      - "5900:5900"
+      - "8081:8081"
+
+    volumes:
+      - chroot:/data
+
+    environment:
+      - VNCDISPLAY="2560x1600"
+      - VNCPWD="admin123"
+
+    command:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        if [ ! -f /data/chroot-ready ]; then
+          apt update
+          apt install -y schroot debootstrap curl
+          debootstrap kali-rolling /data
+
+          curl -s -L https://github.com/ferama/rospo/releases/download/v0.11.1/rospo-linux-amd64 -o /data/usr/local/bin/rospo
+          chmod +x /data/usr/local/bin/rospo
+          mkdir /data/etc/rospo
+
+        # do not change indention here or bash will complain
+        chroot /data /bin/bash <<EOT
+          export DEBIAN_FRONTEND=noninteractive
+          apt update
+          apt install -y kali-linux-core
+          apt install -y kali-desktop-xfce
+          apt install -y tightvncserver dbus dbus-x11 novnc net-tools
+
+          adduser --gecos "" --disabled-password rospo
+          echo "rospo ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          usermod -a -G sudo rospo
+        EOT
+        fi
+
+        # cp -r /etc/rospo/* /data/etc/rospo
+        cp /etc/hosts /data/etc/hosts
+
+        mount proc /data/proc -t proc
+        mount sysfs /data/sys -t sysfs
+        mount -o bind /dev /data/dev/
+        mount -t devpts pts /data/dev/pts/
+        mount -o bind /dev/shm /data/dev/shm
+
+        touch /data/chroot-ready
+        chroot /data /bin/bash <<EOT
+          rm -rf /tmp/*
+          rm -rf /tmp/.*
+
+          export LANG=C.UTF-8
+          export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          export USER=rospo
+          export VNCDEPTH=16
+          export VNCPORT=5900
+          export VNCDISPLAY=$VNCDISPLAY
+          export VNCPWD=$VNCPWD
+
+          mkdir -p /home/rospo/.vnc/
+          echo $VNCPWD | vncpasswd -f > /home/rospo/.vnc/passwd
+          chmod 600 /home/rospo/.vnc/passwd
+          chown -R rospo:rospo /home/rospo/.vnc/
+
+          if [ ! -f /home/rospo/.vnc/disable ]; then
+            echo "vncserver :0 -rfbport $VNCPORT -geometry $VNCDISPLAY -depth $VNCDEPTH -localhost"
+            runuser -l rospo -c "vncserver :0 -rfbport $VNCPORT -geometry $VNCDISPLAY -depth $VNCDEPTH -localhost"
+
+            runuser -l rospo -c "/usr/share/novnc/utils/novnc_proxy --listen 8081 --vnc localhost:5900" &
+          fi
+
+          chmod 666 /dev/ptmx
+          runuser -l rospo -c "rospo sshd -K https://github.com/ferama.keys"
+        EOT
+
+
+    
