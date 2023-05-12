@@ -9,47 +9,52 @@ services:
     privileged: true
     network_mode: "host"
 
-    ports:
-      - "2222:2222"
-      - "5900:5900"
-      - "8081:8081"
+    environment:
+      - VNCDISPLAY="2560x1600"
+      - VNCDEPTH=16
+      - VNCPORT=5900
+      - NOVNCPORT=8081
+      - VNCPWD="admin123"
+      - SSHD_LISTEN_ADDRESS=":2223"
+      # - SSHD_KEYS_URL="https://github.com/ferama.keys"
+      - SSHD_PASSWORD="admin123"
+      - ROSPO_VERSION="v0.11.1/rospo-linux-amd64"
+      - USER=rospo
 
     volumes:
       - chroot:/data
-
-    environment:
-      - VNCDISPLAY="2560x1600"
-      - VNCPWD="admin123"
 
     command:
       - /bin/bash
       - -c
       - |
-        set -e
+        set -ex
+
         if [ ! -f /data/chroot-ready ]; then
           apt update
           apt install -y schroot debootstrap curl
           debootstrap kali-rolling /data
 
-          curl -s -L https://github.com/ferama/rospo/releases/download/v0.11.1/rospo-linux-amd64 -o /data/usr/local/bin/rospo
+          curl -s -L https://github.com/ferama/rospo/releases/download/$${ROSPO_VERSION} -o /data/usr/local/bin/rospo
           chmod +x /data/usr/local/bin/rospo
           mkdir /data/etc/rospo
 
         # do not change indention here or bash will complain
         chroot /data /bin/bash <<EOT
+          set -x
+
           export DEBIAN_FRONTEND=noninteractive
           apt update
           apt install -y kali-linux-core
           apt install -y kali-desktop-xfce
           apt install -y tightvncserver dbus dbus-x11 novnc net-tools
 
-          adduser --gecos "" --disabled-password rospo
-          echo "rospo ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          usermod -a -G sudo rospo
+          adduser --gecos "" --disabled-password $${USER}
+          echo "$${USER} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          usermod -a -G sudo $${USER}
         EOT
         fi
 
-        # cp -r /etc/rospo/* /data/etc/rospo
         cp /etc/hosts /data/etc/hosts
 
         mount proc /data/proc -t proc
@@ -60,31 +65,36 @@ services:
 
         touch /data/chroot-ready
         chroot /data /bin/bash <<EOT
+          set -x
+
           rm -rf /tmp/*
           rm -rf /tmp/.*
 
           export LANG=C.UTF-8
           export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-          export USER=rospo
-          export VNCDEPTH=16
-          export VNCPORT=5900
-          export VNCDISPLAY=$VNCDISPLAY
-          export VNCPWD=$VNCPWD
+          export USER=$${USER}
 
-          mkdir -p /home/rospo/.vnc/
-          echo $VNCPWD | vncpasswd -f > /home/rospo/.vnc/passwd
-          chmod 600 /home/rospo/.vnc/passwd
-          chown -R rospo:rospo /home/rospo/.vnc/
+          mkdir -p /home/$${USER}/.vnc/
+          echo $${VNCPWD} | vncpasswd -f > /home/$${USER}/.vnc/passwd
+          chmod 600 /home/$${USER}/.vnc/passwd
+          chown -R $${USER}:$${USER} /home/$${USER}/.vnc/
 
-          if [ ! -f /home/rospo/.vnc/disable ]; then
-            echo "vncserver :0 -rfbport $VNCPORT -geometry $VNCDISPLAY -depth $VNCDEPTH -localhost"
-            runuser -l rospo -c "vncserver :0 -rfbport $VNCPORT -geometry $VNCDISPLAY -depth $VNCDEPTH -localhost"
-
-            runuser -l rospo -c "/usr/share/novnc/utils/novnc_proxy --listen 8081 --vnc localhost:5900" &
+          # start vnc and nonvnc          
+          if [ ! -f /home/$${USER}/.vnc/disable ]; then
+            runuser -l $${USER} -c "vncserver :0 -rfbport $${VNCPORT} -geometry $${VNCDISPLAY} -depth $${VNCDEPTH} -localhost"
+            runuser -l $${USER} -c "/usr/share/novnc/utils/novnc_proxy --listen $${NOVNCPORT} --vnc localhost:$${VNCPORT}" &
           fi
 
           chmod 666 /dev/ptmx
-          runuser -l rospo -c "rospo sshd -K https://github.com/ferama.keys"
+
+          # can't find a way to declare and use a bash var here :(
+          if [ -n "$${SSHD_KEYS_URL}" ] && [ -n "$${SSHD_PASSWORD}" ]; then
+            runuser -l $${USER} -c "rospo sshd -P $${SSHD_LISTEN_ADDRESS} -K $${SSHD_KEYS_URL} -A $${SSHD_PASSWORD}"
+          elif [ -n "$${SSHD_KEYS_URL}" ]; then
+            runuser -l $${USER} -c "rospo sshd -P $${SSHD_LISTEN_ADDRESS} -K $${SSHD_KEYS_URL}"
+          elif [ -n "$${SSHD_PASSWORD}" ]; then
+            runuser -l $${USER} -c "rospo sshd -P $${SSHD_LISTEN_ADDRESS} -A $${SSHD_PASSWORD}"
+          fi
         EOT
 
 
