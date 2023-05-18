@@ -20,7 +20,6 @@ docker-compose logs -f
 Access the the kali container using:
 
 * ssh on `SSHD_LISTEN_ADDRESS` (using my own sshd service -> https://github.com/ferama/rospo)
-* vnc on `VNCPORT`
-* with browser on http://host:NOVNCPORT/vnc.html
+* rdp on `:3389`
 
 
